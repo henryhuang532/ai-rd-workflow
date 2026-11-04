@@ -5,6 +5,7 @@
 - 状态队列：`workflow/current-task.yaml`；模板：`workflow/templates/`；角色：`.agents/`。
 - 需求：`docs/requirements/`；设计/计划：`docs/superpowers/specs/`、`docs/superpowers/plans/`；兼容既有设计目录 `docs/designs/`；用例：`docs/test-cases/`；缺陷：`docs/bugs/`；实现/Review/QA/交付报告：`docs/reports/`。
 - Orchestrator 负责风险、调度、门禁；Product 负责需求；Superpowers Architect 负责设计/可行性/计划；Matt 负责 TDD 实现；独立 Reviewer 双轴评审；独立 Tester 验收与回归。Integration 按需委派。
+- Matt 技能仅从 `https://github.com/mattpocock/skills` 补齐，准确名称和安装方法见统一契约的“技能依赖与安装”。必须读取原始 `implement`、`tdd` 及引用文档；不得凭理解、记忆或用 Superpowers TDD 替代。安装/读取失败阻塞受影响实施。按原文逐个纵向切片 RED→GREEN，重构属于评审阶段。
 - 风险按数据/权限/外部影响/可逆性/依赖评估，L1/L2 在真实预授权范围推进，L3 设计与 L4 操作均必须明确人工授权。无默认例会。设计/计划变化重新核验授权。
 - DAG 无依赖且资源隔离可并行；真实独立会话不可用则串行并记录原因，不能用角色标签冒充独立 Review/QA。
 - 必要验收不可省略；失败测试、过期版本证据、缺失独立验证或未关闭 P0/P1 阻止完成。P2 必须明确处理。禁止删除/禁用/弱化测试来通过。

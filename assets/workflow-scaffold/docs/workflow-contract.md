@@ -31,6 +31,33 @@
 
 风险越级时停止受影响写操作。设计/计划/验收变更需要重新计算哈希和影响；修改代码后旧 Review/QA 默认失效。低风险允许最小文档及快速连续转移，但每一必要门禁仍必须真实满足。
 
+## 技能依赖与安装
+
+Superpowers 设计读取实际安装的 `brainstorming`、`writing-plans`。Matt 实现、TDD 与评审的唯一指定来源是 [mattpocock/skills](https://github.com/mattpocock/skills)，不能把 Superpowers TDD 视作替代品。
+
+| 技能 | 原仓库路径 | 使用时机 |
+| --- | --- | --- |
+| `implement` | `skills/engineering/implement` | 按已授权 spec/任务实施 |
+| `tdd` | `skills/engineering/tdd` | 每个测试/实现循环，含 `tests.md`、`mocking.md` |
+| `code-review` | `skills/engineering/code-review` | 实现后的 Standards/Spec 双轴评审及重构阶段 |
+| `codebase-design` | `skills/engineering/codebase-design` | 接口、模块深度及 seam 位置存在设计问题时 |
+
+缺失时安装原目录及全部配套文件，不自行创建同名技能或抄写摘要。Codex 有 `skill-installer` 时使用其实际脚本；以下命令固定到本次核验的上游提交，已安装目录先核实来源，不覆盖用户定制：
+
+```bash
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-installer/scripts/install-skill-from-github.py" \
+  --repo mattpocock/skills \
+  --ref 4ae2317ddb22b046e26455e4f9c9b3aaaf62212d \
+  --path skills/engineering/implement skills/engineering/tdd \
+         skills/engineering/code-review skills/engineering/codebase-design
+```
+
+实际仅传入缺失项的路径；无该脚本时遵循原仓库 README 对当前执行器的安装说明。需要升级时先读取新版本，记录新提交 SHA 并核对计划变化。安装失败、缺少配套文档或来源无法核实，记录 current_missing、真实失败日志及检查点，受影响实施保持 BLOCKED；独立无关任务可继续。不得凭理解、记忆、本地流程摘要或其他来源的 TDD 技能继续实施。
+
+实施前读取安装目录的原始 `implement/SKILL.md`、`tdd/SKILL.md`、`tdd/tests.md`、`tdd/mocking.md`；评审读取 `code-review/SKILL.md`，接口/seam 设计按需读取 `codebase-design` 及其适用引用。记录仓库 URL、上游提交 SHA、安装路径、实际所读文件路径及 SHA-256；恢复/升级时核对文件变化，重新读取受影响文档。安装成功不等于执行过技能，角色和报告必须提供实际读取及执行证据。
+
+以原文为执行依据：测试之前确认用户已同意的公共 seams，并列明各自覆盖/未覆盖范围；一次一个纵向切片 RED→GREEN，不先写完全部测试再实现。当前核验版本将重构放到评审阶段，不套用 RED→GREEN→REFACTOR。已有有效用户确认可复用，变化后重新确认。上游技能中的提交、发布等动作仍受已有用户授权和仓库规则约束。以上是来源及交接约束，不能替代每次读取原始技能；本地脚本的 RED/GREEN 检查不能证明 Agent 确实遵循了技能，须由真实执行环境和独立评审核实。
+
 ## DAG 调度与集成
 
 Architect 从模块接口、数据依赖和资源所有权推导 dependencies，记录依据；验证器执行 DAG 检查。调度 READY 集合，依赖完成后才能领取。无依赖、工作区与资源不冲突、授权有效才可并行。逻辑并行不代表真实会话并发。默认 serial + max_parallel=1；只有检测到独立会话、worktree 和槽位才提升并发。每个 Matt 实例独占 workspace/branch，禁止共享写工作区。计划注明冲突路径，跨工作区共享外部资源也须串行。

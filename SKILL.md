@@ -11,7 +11,7 @@ description: Use when initializing, reviewing, or running repository R&D workflo
 
 1. 读取仓库 `AGENTS.md`、代码/构建/CI、全部现有工作流文件；检查 `git status --short`、基准 SHA、dirty/untracked 文件。保护用户现有改动，不擅自初始化 Git、提交、推送或部署。
 2. 读取 [统一契约](references/workflow-file-contract.md)。初始化使用 `assets/workflow-scaffold/`；合并已有文件，禁止覆盖用户规则。脚本命令从目标仓库根目录运行。
-3. 检查当前真实工具：独立 Agent/会话、会话恢复、Git Worktree、命令执行、测试环境、Superpowers 和 Matt implement 技能。读取实际安装的技能，不把名称当作成功调用。探测只用只读或可逆操作，记录工具名、结果、时间、执行环境限制。
+3. 检查当前真实工具：独立 Agent/会话、会话恢复、Git Worktree、命令执行、测试环境、Superpowers 和 Matt 技能。Matt 的准确依赖为 `mattpocock/skills` 的 `implement`、`tdd`、`code-review`，接口/seam 设计另需 `codebase-design`；缺失时按统一契约的“技能依赖与安装”从指定原仓库安装。实施前读取实际安装的原始技能及引用文档，记录来源、版本、路径和哈希；不得凭理解、记忆、本文件摘要或 Superpowers TDD 替代 Matt 技能。安装/读取失败则受影响实施 BLOCKED，不把名称当作成功调用。探测只用只读或可逆操作，记录工具名、结果、时间、执行环境限制。
 4. 默认 `capabilities.mode: serial`；只有存在多个真实独立执行会话、隔离工作区和可用并发槽位才能启用真实并行。DAG 中存在多个 READY 任务只是逻辑并行。无独立会话时允许串行准备/实现；独立 Reviewer/Tester 无法取得时最终门禁 BLOCKED，不用同一 Agent 换角色标签冒充独立验证。
 5. 建立 v2 任务队列 `workflow/current-task.yaml`。记录稳定 ID、需求、范围、授权来源、风险理由、依赖、工作区、产物和检查点。现有 v1 按 [迁移指南](references/migration-v2.md) 迁移，不自动继承通过结论。
 
@@ -32,7 +32,7 @@ description: Use when initializing, reviewing, or running repository R&D workflo
 
 读取 scaffold 中对应 `.agents/*.md`。Orchestrator 不代替专业结论，不覆盖拒绝意见。Architect 保留 Superpowers 候选方案、取舍、设计、计划、公共 seams 和设计自检方法；低风险缩减篇幅，不删安全分析。重大不确定性创建隔离、有时间与范围上限的 Spike，不直接改生产业务代码。
 
-Matt 读取实际可用的 implement/TDD 技能，按授权计划 `RED → GREEN → REFACTOR`；保存失败原因及真实命令，再实现最小改动。Matt-A/B/C 每实例独立工作区、分支、任务所有权。Matt 可自检，但最终 Standards Review 和 Specification Review 必须来自独立 Reviewer。Tester 从 PRD/验收标准独立执行，不能引用 Matt 的成功说明替代测试。
+Matt 必须读取并遵循原仓库的 `implement/SKILL.md`、`tdd/SKILL.md` 及其 `tests.md`、`mocking.md`，在用户已确认的公共 seams 按授权计划逐个纵向切片执行 `RED → GREEN`；保存失败原因及真实命令，再实现最小改动。当前原文将重构放在 `code-review` 评审阶段，不得擅自改为实现阶段的 `RED → GREEN → REFACTOR`，也不得先批量写完测试再批量实现。摘要不能替代每次执行时读取原文；升级后核对变化并处理计划冲突。Matt-A/B/C 每实例独立工作区、分支、任务所有权。Matt 可自检，但最终 Standards Review 和 Specification Review 必须来自独立 Reviewer。Tester 从 PRD/验收标准独立执行，不能引用 Matt 的成功说明替代测试。
 
 每次交接包含 task/requirement IDs、阶段、真实会话 ID、基准/当前版本、输入及哈希、允许/禁止路径、接口契约、命令、完成条件、授权、重试次数、输出路径。会话不在时保留交接包，不编造会话。
 

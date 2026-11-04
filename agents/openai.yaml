@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI研发流程"
+  short_description: "在代码仓库中初始化并运行产品、研发、测试、总负责人多角色研发流程。"
+  default_prompt: "在当前仓库中使用 AI 研发流程：先检查项目现状，再初始化或推进产品、研发、测试和交付门禁。"

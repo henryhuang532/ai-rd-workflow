@@ -1,82 +1,10 @@
-task_id: INIT-20260722-001
-title: "AI研发流程初始化后等待新业务需求"
-status: REQUIREMENT_INPUT
-current_owner: orchestrator
-
-input:
-  original_requirement: ""
-
-artifacts:
-  prd: ""
-  technical_design: ""
-  implementation_report: ""
-  test_cases: ""
-  test_report: ""
-  delivery_report: "docs/reports/INIT-20260722-001-initialization-report.md"
-
-quality_gates:
-  product_review:
-    status: not_started
-    evidence: ""
-  technical_review:
-    status: not_started
-    evidence: ""
-  unit_test:
-    status: not_started
-    command: "mvn test"
-    evidence: ""
-  lint:
-    status: not_applicable
-    command: "当前缺失；未配置 lint 工具"
-    evidence: "AGENTS.md"
-  type_check:
-    status: not_started
-    command: "mvn -DskipTests compile"
-    evidence: "AGENTS.md"
-  build:
-    status: not_started
-    command: "mvn clean verify"
-    evidence: "AGENTS.md"
-  functional_test:
-    status: not_started
-    command: ""
-    evidence: ""
-  regression_test:
-    status: not_started
-    command: ""
-    evidence: ""
-
-iterations:
-  product: 0
-  development: 0
-  testing: 0
-
-limits:
-  max_product_iterations: 2
-  max_development_iterations: 3
-  max_testing_iterations: 3
-
-open_bugs: []
-blockers: []
-assumptions:
-  - "当前仓库以已有 Java 21 后端基座设计文档为项目规范来源。"
-  - "当前目录不是 Git 仓库，无法使用 Git 分支或 worktree 隔离；这不阻塞提交新业务需求。"
-  - "当前目录已包含 Maven 多模块项目；业务测试和构建命令以 AGENTS.md 中记录为准。"
-  - "当前 Codex 环境支持子智能体；后续产品、研发、测试角色必须通过独立子 Agent 模拟。"
-history:
-  - from: ""
-    to: REQUIREMENT_INPUT
-    actor: orchestrator
-    time: "2026-07-22T00:00:00+08:00"
-    reason: "初始化文件驱动研发流程，等待用户提交第一个业务需求。"
-    artifacts:
-      - AGENTS.md
-      - .agents/orchestrator.md
-      - .agents/product.md
-      - .agents/developer.md
-      - .agents/tester.md
-      - workflow/templates/task-template.yaml
-      - scripts/workflow_check.py
-      - scripts/verify.sh
-    validation:
-      schema: passed
+schema_version: 2
+revision: 0
+capabilities:
+  mode: serial
+  reason: Independent execution and workspace probes not supplied
+  independent_sessions: false
+policy:
+  max_parallel: 1
+  max_attempts: 3
+tasks: []

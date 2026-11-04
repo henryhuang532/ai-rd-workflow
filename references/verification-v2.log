@@ -1,0 +1,61 @@
+test_independent_reviewer_contract (test_baseline.Baseline.test_independent_reviewer_contract) ... ok
+test_no_fixed_kickoff (test_baseline.Baseline.test_no_fixed_kickoff) ... ok
+test_version_two_runtime_available (test_baseline.Baseline.test_version_two_runtime_available) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.001s
+
+OK
+workflow_check: schema passed (state and evidence consistency; not identity authentication)
+test_01_initial_state_has_separate_lifecycle_and_stage (test_engine.EngineScenarios.test_01_initial_state_has_separate_lifecycle_and_stage) ... ok
+test_01_small_bug_completes_without_meeting (test_engine.EngineScenarios.test_01_small_bug_completes_without_meeting) ... ok
+test_02_ordinary_feature_completes (test_engine.EngineScenarios.test_02_ordinary_feature_completes) ... ok
+test_03_complex_dag_dependency_completion_controls_readiness (test_engine.EngineScenarios.test_03_complex_dag_dependency_completion_controls_readiness) ... ok
+test_03_dag_cycle_rejected (test_engine.EngineScenarios.test_03_dag_cycle_rejected) ... ok
+test_03_missing_dependency_rejected (test_engine.EngineScenarios.test_03_missing_dependency_rejected) ... ok
+test_04_independent_tasks_are_logically_ready (test_engine.EngineScenarios.test_04_independent_tasks_are_logically_ready) ... ok
+test_04_parallel_workspace_collision_rejected (test_engine.EngineScenarios.test_04_parallel_workspace_collision_rejected) ... ok
+test_04_serial_fallback_limits_actual_claims (test_engine.EngineScenarios.test_04_serial_fallback_limits_actual_claims) ... ok
+test_05_high_risk_cannot_jump_to_implementation (test_engine.EngineScenarios.test_05_high_risk_cannot_jump_to_implementation) ... ok
+test_05_level4_preauthorization_is_insufficient (test_engine.EngineScenarios.test_05_level4_preauthorization_is_insufficient) ... ok
+test_06_design_change_invalidates_old_approval (test_engine.EngineScenarios.test_06_design_change_invalidates_old_approval) ... ok
+test_07_matt_cannot_review_own_code (test_engine.EngineScenarios.test_07_matt_cannot_review_own_code) ... ok
+test_07_reviewer_rejects_code (test_engine.EngineScenarios.test_07_reviewer_rejects_code) ... ok
+test_08_defect_can_enter_fix_and_requires_review_again (test_engine.EngineScenarios.test_08_defect_can_enter_fix_and_requires_review_again) ... ok
+test_08_tester_defect_routes_to_fix (test_engine.EngineScenarios.test_08_tester_defect_routes_to_fix) ... ok
+test_09_repeated_defect_failure_escalates (test_engine.EngineScenarios.test_09_repeated_defect_failure_escalates) ... ok
+test_10_code_change_invalidates_test_evidence (test_engine.EngineScenarios.test_10_code_change_invalidates_test_evidence) ... ok
+test_11_429_retains_failure_and_bounds_retries (test_engine.EngineScenarios.test_11_429_retains_failure_and_bounds_retries) ... ok
+test_11_expired_lease_preserves_checkpoint (test_engine.EngineScenarios.test_11_expired_lease_preserves_checkpoint) ... ok
+test_12_idempotent_operation_is_not_reexecuted (test_engine.EngineScenarios.test_12_idempotent_operation_is_not_reexecuted) ... ok
+test_12_nonidempotent_operation_replay_rejected (test_engine.EngineScenarios.test_12_nonidempotent_operation_replay_rejected) ... ok
+test_13_real_git_merge_conflict_cannot_complete (test_engine.EngineScenarios.test_13_real_git_merge_conflict_cannot_complete) ... ok
+test_14_direct_completion_without_evidence_rejected (test_engine.EngineScenarios.test_14_direct_completion_without_evidence_rejected) ... ok
+test_14_exit_status_field_forgery_rejected (test_engine.EngineScenarios.test_14_exit_status_field_forgery_rejected) ... ok
+test_14_forged_status_without_history_or_evidence_rejected (test_engine.EngineScenarios.test_14_forged_status_without_history_or_evidence_rejected) ... ok
+test_cancel_with_stale_evidence_is_persistable (test_engine.EngineScenarios.test_cancel_with_stale_evidence_is_persistable) ... ok
+test_completed_task_does_not_block_future_queue_after_code_changes (test_engine.EngineScenarios.test_completed_task_does_not_block_future_queue_after_code_changes) ... ok
+test_dynamic_risk_escalation_revokes_authorization (test_engine.EngineScenarios.test_dynamic_risk_escalation_revokes_authorization) ... ok
+test_integration_failure_creates_traceable_repair_task (test_engine.EngineScenarios.test_integration_failure_creates_traceable_repair_task) ... ok
+test_lease_heartbeat_rejects_other_session_and_saves_checkpoint (test_engine.EngineScenarios.test_lease_heartbeat_rejects_other_session_and_saves_checkpoint) ... ok
+test_operation_uncertainty_survives_real_store_recovery (test_engine.EngineScenarios.test_operation_uncertainty_survives_real_store_recovery) ... ok
+test_real_atomic_store_concurrent_writers (test_engine.EngineScenarios.test_real_atomic_store_concurrent_writers) ... ok
+test_real_atomic_store_rejects_invalid_update (test_engine.EngineScenarios.test_real_atomic_store_rejects_invalid_update) ... ok
+test_real_command_evidence_binds_git_revision (test_engine.EngineScenarios.test_real_command_evidence_binds_git_revision) ... ok
+test_real_command_failure_cannot_be_recorded_as_pass (test_engine.EngineScenarios.test_real_command_failure_cannot_be_recorded_as_pass) ... ok
+test_real_git_worktrees_support_distinct_claims (test_engine.EngineScenarios.test_real_git_worktrees_support_distinct_claims)
+Real worktree isolation; session identities/probe remain simulation. ... ok
+test_real_snapshot_changes_for_uncommitted_code (test_engine.EngineScenarios.test_real_snapshot_changes_for_uncommitted_code) ... ok
+test_real_store_recovers_expired_lease_with_missing_design (test_engine.EngineScenarios.test_real_store_recovers_expired_lease_with_missing_design) ... ok
+test_real_store_recovers_lost_workspace (test_engine.EngineScenarios.test_real_store_recovers_lost_workspace) ... ok
+test_real_timeout_retains_command_receipt (test_engine.EngineScenarios.test_real_timeout_retains_command_receipt) ... ok
+test_running_transition_cannot_bypass_incomplete_dependency (test_engine.EngineScenarios.test_running_transition_cannot_bypass_incomplete_dependency) ... ok
+test_running_transition_requires_claim_lease (test_engine.EngineScenarios.test_running_transition_requires_claim_lease) ... ok
+test_tdd_red_success_is_rejected (test_engine.EngineScenarios.test_tdd_red_success_is_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 44 tests in 4.773s
+
+OK
+verify: project checks not configured; workflow checks only. Supply the real project verification command as argv.
+package: YAML, local Markdown links, synchronized contracts passed

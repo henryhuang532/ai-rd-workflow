@@ -1,6 +1,3 @@
-# Designs
+# 既有设计兼容目录
 
-Technical design files live here as `TASK-YYYYMMDD-NNN-technical-design.md`.
-
-Each design must be based on an approved PRD and include current-state analysis, impact scope, module design, data structures, API changes, compatibility, error handling, security and permissions, test strategy, risks, and rollback plan.
-
+保留已有设计引用，不强制移动历史文件。新设计建议使用 `docs/superpowers/specs/`，计划使用 `docs/superpowers/plans/`。内容要求及可行性门禁见 [统一契约](../workflow-contract.md)，不能把文件存在当成批准。

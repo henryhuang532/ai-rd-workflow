@@ -1,63 +1,35 @@
-task_id: ""
-title: ""
-status: REQUIREMENT_INPUT
-current_owner: orchestrator
-
-input:
-  original_requirement: ""
-
-artifacts:
-  prd: "docs/requirements/<task_id>-prd.md"
-  technical_design: "docs/designs/<task_id>-technical-design.md"
-  implementation_report: "docs/reports/<task_id>-implementation-report.md"
-  test_cases: "docs/test-cases/<task_id>-test-cases.md"
-  test_report: "docs/reports/<task_id>-test-report.md"
-  delivery_report: "docs/reports/<task_id>-delivery-report.md"
-
-quality_gates:
-  product_review:
-    status: not_started
-    evidence: ""
-  technical_review:
-    status: not_started
-    evidence: ""
-  unit_test:
-    status: not_started
-    command: ""
-    evidence: ""
-  lint:
-    status: not_started
-    command: ""
-    evidence: ""
-  type_check:
-    status: not_started
-    command: ""
-    evidence: ""
-  build:
-    status: not_started
-    command: ""
-    evidence: ""
-  functional_test:
-    status: not_started
-    command: ""
-    evidence: ""
-  regression_test:
-    status: not_started
-    command: ""
-    evidence: ""
-
-iterations:
-  product: 0
-  development: 0
-  testing: 0
-
-limits:
-  max_product_iterations: 2
-  max_development_iterations: 3
-  max_testing_iterations: 3
-
-open_bugs: []
-blockers: []
-assumptions: []
+task_id: TASK-REPLACE
+parent_task_id: null
+requirement_ids: []
+title: 填写任务标题
+description: ''
+risk_level: 1
+risk_factors: []
+status: PENDING
+stage: INTAKE
+dependencies: []
+assigned_role: orchestrator
+assigned_agent: null
+workspace: null
+branch: null
+acceptance_criteria: []
+artifacts: []
+attempts: 0
+timestamps: {}
+evidence: []
+requirements: []
+design: {}
+plan: {}
+feasibility: {}
+authorization: {}
+reviews: []
+tests: []
+bugs: []
+lease: null
+operations: {}
 history: []
-
+checkpoint: {}
+failure: null
+next_retry_at: 0
+implementation_sessions: []
+tdd: []

@@ -1,176 +1,65 @@
 ---
 name: ai-rd-workflow
-description: Use when a user asks Codex to initialize, standardize, or run a repository R&D workflow with multi-agent meetings, Superpowers design and planning, Matt implement TDD delivery and code review, tester validation, stage gates, defect repair loops, AGENTS.md, workflow state, or file-based handoffs.
+description: Use when initializing, reviewing, or running repository R&D workflows with risk-based authorization, Superpowers design, Matt TDD implementation, independent review and QA, task DAGs, evidence gates, or recovery using existing Codex execution capabilities.
 ---
 
-# AI 研发流程
+# AI 研发工作流 v2
 
-## Core Rule
+以任务、依赖和风险决定流程。Orchestrator 调度，Product 定义验收，Architect 使用 Superpowers 设计，Matt 使用 TDD 实现，Reviewer 独立评审，Tester 独立验证。文件交接和真实执行证据驱动门禁；会议只解决实际分歧。不得伪造角色发言、审批、测试或日志。
 
-把研发过程组织成由 Orchestrator 主持的多 agent 会议。会议中的每个角色必须有独立上下文、明确产物和可追溯发言；角色之间通过仓库文件和 Orchestrator 交接，不能用复制聊天内容代替交接。
+## 启动与能力检测
 
-本技能采用固定分工：
+1. 读取仓库 `AGENTS.md`、代码/构建/CI、全部现有工作流文件；检查 `git status --short`、基准 SHA、dirty/untracked 文件。保护用户现有改动，不擅自初始化 Git、提交、推送或部署。
+2. 读取 [统一契约](references/workflow-file-contract.md)。初始化使用 `assets/workflow-scaffold/`；合并已有文件，禁止覆盖用户规则。脚本命令从目标仓库根目录运行。
+3. 检查当前真实工具：独立 Agent/会话、会话恢复、Git Worktree、命令执行、测试环境、Superpowers 和 Matt implement 技能。读取实际安装的技能，不把名称当作成功调用。探测只用只读或可逆操作，记录工具名、结果、时间、执行环境限制。
+4. 默认 `capabilities.mode: serial`；只有存在多个真实独立执行会话、隔离工作区和可用并发槽位才能启用真实并行。DAG 中存在多个 READY 任务只是逻辑并行。无独立会话时允许串行准备/实现；独立 Reviewer/Tester 无法取得时最终门禁 BLOCKED，不用同一 Agent 换角色标签冒充独立验证。
+5. 建立 v2 任务队列 `workflow/current-task.yaml`。记录稳定 ID、需求、范围、授权来源、风险理由、依赖、工作区、产物和检查点。现有 v1 按 [迁移指南](references/migration-v2.md) 迁移，不自动继承通过结论。
 
-- **Superpowers 席**负责需求澄清后的方案推导、design、plan、公共测试接口（seams）和设计自检。
-- **Matt implement 席**负责读取已批准的 design/plan，按 TDD 实施、运行实现侧验证，并执行 Standards/Spec 两轴代码评审。
-- **Tester 席**独立依据 PRD、批准的验收标准和实际代码验证功能；不把 Matt 的实现报告当作测试证据。
-- **Product 席**补充业务目标、规则、优先级和验收语义；不写实现代码。
-- **Orchestrator 席**主持会议、准备议程、汇总发言、审查产物、推进状态、路由缺陷和输出报告；不替代任何专家完成其应交付的产物。
+## 风险路由
 
-“Superpowers 负责设计，Matt 负责实现”是硬边界。不得把含糊的 Developer Agent 作为默认实现者，也不得在批准前调用实现技能、写业务代码或写实现测试。
+评估数据敏感性、权限、外部影响、不可逆性、依赖、复杂度与回滚能力；不能以代码行数判断。实施前、集成时和范围变化后重新评估。
 
-## Use This Workflow
-
-1. **先看真实仓库状态**：使用 `git rev-parse --show-toplevel`、`rg --files`、`git status --short`、`git log -1 --oneline`，读取 `AGENTS.md`、README、领域文档、设计/测试目录、构建文件、CI 和现有工作流。记录当前分支、实施前基准 SHA、已有 staged/unstaged 改动、可用命令和已知环境限制。
-2. **建立会议封套**：为任务生成稳定 `task_id` 和 `meeting_id`，在 `workflow/current-task.yaml` 写入原始需求、参与者、基线 SHA、已有改动、允许/禁止路径、目标状态和待确认问题。
-3. **召开启动会（KICKOFF_MEETING）**：Orchestrator 让 Product、Superpowers、Matt、Tester 分别独立发言。会议记录必须区分事实、建议、风险、假设和需要用户决定的事项；Orchestrator 负责合并，不让一个角色替其他角色拍板。
-4. **由 Superpowers 产出 design 与 plan**：先做候选方案和取舍，再写可独立阅读的 design；设计获准后再写逐任务 plan。设计和计划要指定真实文件路径、公共 seams、行为验收、测试命令、预期证据和非目标。未获批准时只能写文档，不能实施。
-5. **召开设计/计划评审会**：Product 检查业务覆盖，Matt 检查可实现性和 seams，Tester 检查可验证性，Orchestrator 检查范围、接口、状态和风险。任何实质性争议必须形成决议；不能把“看起来合理”当作批准。
-6. **记录明确批准门**：批准绑定 design/plan 的版本、SHA-256、来源和时间。可接受来源包括已授权的 Gitee 评审结论或用户在聊天中的明确确认；issue 关闭、标签或沉默不算批准。批准前不调用 Matt implement。
-7. **交给 Matt implement 席实施**：交接包必须包含批准版路径和哈希、批准依据、确认的 seams、PRD 映射、任务顺序、基线 SHA、已有改动、允许/禁止路径、真实命令、环境限制、回滚边界和预期证据路径。Matt 每个行为遵循 `RED → GREEN → REFACTOR`：先写一个能证明目标行为的测试并确认按预期失败，再写最小实现，最后保持全套测试通过后重构。
-8. **由 Matt 完成实现侧验证和代码评审**：运行受影响测试、类型检查、构建以及项目完整测试一次；失败要记录原始命令、输出摘要、原因和未验证范围。代码评审必须覆盖实施前基线 SHA 到当前状态的已提交、未提交和新增文件，并分别输出 Standards 与 Spec 结果、严重级别、行号、修复和复测证据。无差异时也要记录实际 diff 检查，不能声称已完成评审而不提供范围证据。
-9. **召开功能测试会**：Tester 依据 PRD 和批准的验收标准独立执行功能、回归、权限、边界和异常用例，保存命令/日志/截图等证据。发现问题时创建结构化 bug 文件，包含条款、复现步骤、实际结果、期望结果、环境和证据链接。
-10. **处理缺陷会议和回归**：Orchestrator 将同一个 bug 包交回原 Matt implement 会话；先补失败回归测试，再修复、运行实现侧验证，交回 Tester 回归。若公共接口、数据模型、验收标准或业务规则改变，必须回到 Superpowers design/plan 评审；实现细节修复无需重新批准。连续修复失败或外部依赖不可用时进入 `BLOCKED`/`NEEDS_USER_INPUT`，写明事实和重试次数。
-11. **验收和交付**：只有 Tester 证据、Matt 实现/评审证据、Orchestrator 状态和批准记录都齐全，才能进入 `ACCEPTANCE`/`DONE`。最终报告区分已完成、已验证、未验证、失败、阻塞和建议下一步，不把局部通过写成全仓通过。
-
-## 会议协议与角色边界
-
-每次会议记录至少包含：`meeting_id`、`task_id`、阶段、参与者及其独立会话、输入文件版本、每席发言、异议、决议、行动项、输出路径和下一门禁。Orchestrator 必须先发议程和上下文，再收集独立发言，最后发布决议；不得让多个角色共用一个上下文后把单 agent 顺序执行称为会议。
-
-| 角色 | 允许产物 | 明确禁止 |
+| 等级 | 示例与推荐路径 | 授权及协作 |
 | --- | --- | --- |
-| Product | 目标、PRD、验收语义、优先级 | 业务代码、实现细节拍板 |
-| Superpowers | 候选方案、design、plan、公共 seams、设计自检 | 业务代码、实现测试、绕过批准 |
-| Matt implement | TDD 测试与实现、验证记录、双轴 code-review、修复 | 修改 PRD 消除失败、扩大范围、绕过 TDD |
-| Tester | 测试用例、独立执行证据、bug/回归报告 | 以实现报告代替执行、修改业务代码 |
-| Orchestrator | 会议纪要、状态、交接包、门禁决议、交付报告 | 代写专家产物、隐式批准、替专家实现 |
+| LEVEL 1 | 简单 Bug/文案/局部非关键配置：定位→最小设计与可行性→TDD→Review→针对性 QA | 记录已有预授权范围；默认无会议，必要质量检查始终保留 |
+| LEVEL 2 | 常规功能/API：需求→轻量设计→可行性→计划→风险门禁→开发→集成→Review→QA | 范围内自动推进；独立任务按 DAG 调度 |
+| LEVEL 3 | 跨模块/核心架构/重大重构：需求→按议题多 Agent 讨论→Superpowers Design→Spike/可行性→Plan→设计评审→审批→开发→集成→Review→专项 QA→验收 | 保存分歧、ADR、接口、依赖、明确人工设计审批及回滚；已有有效人工版本授权可复用 |
+| LEVEL 4 | 生产迁移、认证权限、重要数据删除、不可逆/付费操作、生产部署/敏感基础设施 | 实际高风险操作前必须明确人工授权，绑定范围与设计/计划哈希；技术投票无效 |
 
-## Files To Establish
+升级立即停止受影响操作、失效相关授权/证据并重走门禁，其余独立任务继续。预授权必须来自真实用户或组织政策，记录主体、范围、期限、限制和来源；Agent 不能自行创建用户授权。
 
-使用仓库已有等价目录，避免重复创建。至少建立：
+## 专业角色与交接
 
-```text
-AGENTS.md
-.agents/orchestrator.md
-.agents/product.md
-.agents/superpowers-designer.md
-.agents/matt-implementer.md
-.agents/tester.md
-workflow/current-task.yaml
-workflow/templates/task-template.yaml
-workflow/history/
-workflow/meetings/
-docs/requirements/
-docs/superpowers/specs/
-docs/superpowers/plans/
-docs/test-cases/
-docs/bugs/
-docs/reports/
-scripts/workflow_check.py
-scripts/verify.sh
-```
+读取 scaffold 中对应 `.agents/*.md`。Orchestrator 不代替专业结论，不覆盖拒绝意见。Architect 保留 Superpowers 候选方案、取舍、设计、计划、公共 seams 和设计自检方法；低风险缩减篇幅，不删安全分析。重大不确定性创建隔离、有时间与范围上限的 Spike，不直接改生产业务代码。
 
-如果仓库仍使用 `.agents/developer.md`，可以保留兼容入口，但其内容必须明确转发到 Matt implement 席，不能重新定义一个独立 Developer 流程。创建或审查这些文件时读取 `references/workflow-file-contract.md`。
+Matt 读取实际可用的 implement/TDD 技能，按授权计划 `RED → GREEN → REFACTOR`；保存失败原因及真实命令，再实现最小改动。Matt-A/B/C 每实例独立工作区、分支、任务所有权。Matt 可自检，但最终 Standards Review 和 Specification Review 必须来自独立 Reviewer。Tester 从 PRD/验收标准独立执行，不能引用 Matt 的成功说明替代测试。
 
-## 状态机
+每次交接包含 task/requirement IDs、阶段、真实会话 ID、基准/当前版本、输入及哈希、允许/禁止路径、接口契约、命令、完成条件、授权、重试次数、输出路径。会话不在时保留交接包，不编造会话。
 
-标准路径：
+## 执行闭环
 
-```text
-REQUIREMENT_INPUT -> KICKOFF_MEETING -> SUPERPOWERS_DESIGN -> DESIGN_REVIEW_MEETING
--> PLAN_REVIEW_MEETING -> APPROVAL_GATE -> MATT_IMPLEMENT_TDD -> MATT_UNIT_TEST
--> MATT_CODE_REVIEW -> FUNCTIONAL_TEST -> ACCEPTANCE -> DONE
-```
+1. Product 为每项需求分配 REQ ID、每项验收分配 AC ID，写可验证的 Given/When/Then、业务/权限/异常边界、非目标和假设。重大歧义才询问用户。
+2. Architect 输出版本化设计与 ADR、接口/数据模型、任务 DAG、依赖及文件资源所有权、测试策略和回滚。Feasibility Check 真实检查依赖、栈兼容、关键接口、迁移必要性、测试环境、边界和未决假设；失败返回设计，不能直接宣布计划可执行。
+3. Orchestrator 检查预授权或显式人工审批。审批绑定 design/plan SHA-256、动作、环境、主体、来源、时间；沉默、issue 关闭和 Agent 投票均无效。
+4. 仅调度前置任务完成、租约/资源无冲突且门禁满足的任务。真实并发受 `max_parallel` 和执行器槽位共同限制；同一工作区禁止并发写入。没有后台服务时只运行当前前台可完成批次，退出前保存检查点；后续重新调用恢复。
+5. Matt 实现并记录 TDD/构建证据。Integration 按拓扑整合分支、检查契约、构建及集成测试；冲突创建可追踪修复任务，禁止把失败标记完成。
+6. Reviewer 针对明确 Git SHA 和完整 dirty/untracked 范围分别给出 Standards/Specification 结论、问题位置/级别/建议/阻塞性及复审。拒绝必须修复或通过有权主体处理，Orchestrator 无权抹去。
+7. Tester 独立执行验收、边界、异常、集成与受影响回归；每 AC 绑定 test case 和真实证据。失败创建 bug，分类路由后 TDD 修复→独立复审→回归。
+8. 最终以 Requirement→Design Decision→Task→Git Change→Test Case→Evidence 追踪验收。版本变化分析失效影响；无法证明不受影响时重新 Review/QA。COMPLETED 只能由验证器检查真实产物、版本、授权、独立结论、测试和阻塞缺陷后写入。
 
-缺陷路径：
+## 按需讨论、缺陷与恢复
 
-```text
-FUNCTIONAL_TEST -> BUG_REVIEW_MEETING -> MATT_BUG_FIX_TDD -> MATT_UNIT_TEST
--> MATT_CODE_REVIEW -> FUNCTIONAL_TEST
-```
+只在重大需求歧义、方案/验收冲突、跨角色 ADR、多次修复失败或重大风险复核时讨论。按议题选人，依次记录方案→独立意见→反驳与证据→修订→决策；默认最多 3 轮。没有可验证结论则 BLOCKED/升级，不伪造发言。
 
-异常状态：`NEEDS_USER_INPUT`、`BLOCKED`、`CANCELLED`。
+缺陷分类和租约恢复、429/容量不足/超时/上下文耗尽/中断/工作区丢失/合并冲突/环境故障处理见统一契约。重试有上限、指数退避并遵守 Retry-After；复用真实可恢复会话，不创建同义任务绕过限额。非幂等操作结果不明时人工核对，不自动重放。重试耗尽不能自动通过或重构架构。
 
-`workflow/current-task.yaml` 至少记录：
-
-```yaml
-task_id: <stable-id>
-meeting_id: <current-meeting-id>
-state: <state>
-participants: [orchestrator, product, superpowers, matt, tester]
-baseline_sha: <sha-or-null>
-existing_changes: {staged: [], unstaged: []}
-artifacts:
-  design: {path: <path>, sha256: <hash>, version: <version>, approved: false}
-  plan: {path: <path>, sha256: <hash>, version: <version>, approved: false}
-handoff:
-  seams: []
-  acceptance_mapping: []
-  allowed_paths: []
-  forbidden_paths: []
-  commands: []
-  evidence_paths: []
-approval: {source: null, timestamp: null, decision: pending}
-sessions: {superpowers: null, matt: null, tester: null}
-review: {standards: [], spec: [], status: pending}
-retry_count: {product: 0, superpowers: 0, matt: 0, tester: 0}
-limitations: []
-```
-
-## 设计、实现和验证细则
-
-### Superpowers 设计席
-
-读取仓库规则和相关领域文档，提出有实际差异的候选方案及取舍，推荐一个方案，写入 `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`；设计获批后写入 `docs/superpowers/plans/YYYY-MM-DD-<topic>.md`。计划按可独立验收的纵向切片组织，每步列出真实路径、公共 seam、关键测试代码、执行命令、预期结果和验收映射。不要把推测路径写成既有事实。若采用 Gitee 评审，记录 issue/评论链接、内容哈希、发布时间和明确批准结论。
-
-### Matt implement 席
-
-读取 `.agents/skills/implement/SKILL.md` 及其 TDD/code-review 依赖；若依赖缺失，记录 `current_missing` 或 `BLOCKED`，不得伪造调用。按批准 plan 的顺序开发；公共 seam 的行为变化必须先有失败测试。每个行为保存失败命令、失败原因、最小实现、通过命令和验收映射。实现完成后按仓库真实配置运行完整测试一次；环境阻塞要原样记录。Matt 不修改 design/plan 的业务约定来掩盖失败。
-
-### Tester 席
-
-测试用例来自 PRD 和批准版验收标准，而非 Matt 的自评。至少覆盖正常、异常、边界、权限/可见性和回归场景中与任务相关的部分。测试证据必须包含实际命令和结果；不能只写“已验证”。
-
-## Subagent Dispatch 与限流
-
-有 subagent 工具时必须为每个席位使用独立会话。设计会可并行收集 Product、Superpowers、Matt、Tester 的独立意见，但涉及同一文件的实施、修复和状态变更必须由 Orchestrator 串行协调。Orchestrator 审阅每席产物后再推进门禁。
-
-把 `429`、rate-limit、quota-exhausted、capacity-unavailable、slot-unavailable 视为同一 `role + stage + task` 的暂时失败：
-
-- 不创建等价替代 agent，不重复发送并行提示。
-- 在当前 Orchestrator 会话中按有界退避重试，保留原 prompt、文件路径、task 状态和已有会话句柄；有 `Retry-After` 时遵守它。
-- 已创建的会话用 follow-up 恢复；创建被拒且没有句柄时，按严格角色标签在当前会话顺序执行并记录限制。
-- 有界重试仍失败则进入 `BLOCKED` 或 `NEEDS_USER_INPUT`，写明真实错误和次数；不要无限循环。
-- 只有任务含义实质变化或原会话确认不可恢复时才允许新 agent，并在状态中记录原因。
-
-没有 subagent 工具时，不能把单 agent 自言自语称为多 agent 会议。应在 `workflow/current-task.yaml` 记录 `subagents: unavailable`，用分隔的角色文件、独立产物和显式门禁顺序执行，并把该限制写入报告。
-
-## 用户入口与提问边界
-
-未来需求只能由 Orchestrator 作为用户入口接收。角色 handoff 通过仓库文件和 Orchestrator 派发，不要求用户在 agent 之间转发消息。只在不可从代码、文档或已确认上下文解决，且会改变行为或验收的重大问题上询问用户：不可逆删除、金额/计费、权限/安全、不兼容行为、外部凭据/数据、与用户改动冲突或反复修复失败。其余选择写成带理由的设计决定或明确假设。
-
-## Verification
-
-完成前总是运行新鲜验证：
+## 验证与真实性边界
 
 ```bash
 python3 scripts/workflow_check.py --stage schema
 bash scripts/verify.sh
 ```
 
-如果项目有构建文件，`verify.sh` 必须执行该项目真实的 lint、类型检查、测试或构建命令。能力缺失标记为 `not_applicable` 或 `current_missing`；不能编造命令或结果。技能文件自身变更后，至少运行 YAML/Markdown 结构检查、关键术语检索和 diff 检查，确认“Superpowers=design/plan”“Matt=implementation/review”“approval gate”“TDD red→green”均可检索。
+按项目实际配置补运行构建、lint、类型检查和测试，记录命令/退出码/版本/日志。区分真实执行、模拟状态机测试和未验证能力。脚本是现有 Codex 的文件门禁辅助工具，不是独立 Agent 管理平台，不假设常驻服务。
 
-## Common Mistakes
-
-- 没有先读取仓库，就创建一套通用角色文件。
-- 把单 agent 顺序执行称为多 agent 会议。
-- 让 Superpowers 写业务代码，或让 Matt 在批准前实现。
-- 把“Developer Agent”当成与 Matt 并列的默认实现者，造成责任漂移。
-- 用聊天中的模糊同意、issue 关闭或标签代替可识别版本的批准。
-- 没有保存 design/plan 的哈希、基线 SHA、dirty 状态和公共 seams。
-- 只运行 Matt 的聚焦测试，就声称完整验证通过。
-- Tester 直接采信实现报告，或为了让测试通过修改业务规则。
-- code-review 只看 `HEAD` diff，漏掉未提交和新增文件。
-- 缺陷通过修改 PRD 或删除验收标准来“修复”。
-- `429` 后创建同角色同阶段的重复 agent，或无限重试。
-- 把实现细节变化误当作需要重新批准，或把公共接口/验收变化当作无需回设计。
+本地同权限文件、哈希、会话字符串不是可信身份或签名；验证器可以阻止结构错误、过期证据和普通字段伪造，不能抵抗控制脚本及所有证据的恶意主体。高风险授权来源和独立角色身份必须由当前可信会话/已有执行环境核实；若无法核实则阻塞，不声称防伪安全已实现。

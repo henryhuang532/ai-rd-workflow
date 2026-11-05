@@ -31,7 +31,7 @@ def new_state():
     return {'schema_version':2,'revision':0,'capabilities':{'mode':'serial','reason':'Independent execution and workspace probes not supplied','independent_sessions':False},'policy':{'max_parallel':1,'max_attempts':3},'tasks':[]}
 
 def new_task(task_id, title, risk=1):
-    return dict(task_id=task_id,parent_task_id=None,requirement_ids=[],title=title,description='',risk_level=risk,risk_factors=[],status='PENDING',stage='INTAKE',dependencies=[],assigned_role='orchestrator',assigned_agent=None,workspace=None,branch=None,acceptance_criteria=[],artifacts=[],attempts=0,timestamps={},evidence=[],requirements=[],design={},plan={},feasibility={},authorization={},reviews=[],tests=[],bugs=[],lease=None,operations={},history=[],checkpoint={},failure=None,next_retry_at=0,implementation_sessions=[],tdd=[])
+    return dict(task_id=task_id,parent_task_id=None,requirement_ids=[],title=title,description='',risk_level=risk,risk_factors=[],status='PENDING',stage='INTAKE',dependencies=[],assigned_role='orchestrator',assigned_agent=None,workspace=None,branch=None,acceptance_criteria=[],artifacts=[],attempts=0,timestamps={},evidence=[],requirements=[],requirements_baseline={},open_questions=[],prechecks=[],agent_dispatches=[],design={},plan={},feasibility={},authorization={},reviews=[],tests=[],bugs=[],lease=None,operations={},history=[],checkpoint={},failure=None,next_retry_at=0,implementation_sessions=[],tdd=[])
 
 def safe_path(root, name):
     root = Path(root).resolve()
@@ -76,23 +76,57 @@ def task_by_id(state, tid):
     require(len(matches)==1, 'unknown or duplicate task')
     return matches[0]
 
-def authorize(t, root):
+def requirements_digest(t):
+    """Bind the PRD, version and delivery scope; the PRD alone may span many tasks."""
+    b=t['requirements_baseline']
+    payload={k:b[k] for k in ('version','document','requirements','acceptance_ids')}
+    return hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+
+def authorize(t, root,legacy_archived=False):
+    requirements_gate(t,root,legacy_archived)
     a = t['authorization']
     require(a.get('decision')=='approved', 'approval required')
     require(a.get('kind') in {'human','preauthorized'}, 'authorization kind required')
     require(t['risk_level'] < 3 or a.get('kind')=='human', 'LEVEL 3/4 requires explicit human authorization')
     require(a.get('risk_level')==t['risk_level'] and t['task_id'] in a.get('scope',[]), 'authorization scope/risk mismatch')
     check_artifact(root,a.get('source'))
+    if not legacy_archived:
+        require(a.get('requirements_sha256')==requirements_digest(t), 'stale requirements approval')
     for key in ('design','plan'):
         check_artifact(root,t[key])
         require(a.get(key+'_sha256')==t[key]['sha256'], 'stale '+key+' approval')
 
-def planning_gate(t,root):
+def requirements_gate(t,root,legacy_archived=False):
     require(t['requirements'] and t['acceptance_criteria'], 'requirements/acceptance missing')
     ids = [r['requirement_id'] for r in t['requirements']]
     require(len(ids)==len(set(ids)) and set(ids)==set(t['requirement_ids']), 'requirement IDs mismatch')
     mapped = {ac for r in t['requirements'] for ac in r['acceptance_ids']}
     require(mapped==set(t['acceptance_criteria']), 'acceptance mapping incomplete')
+    if legacy_archived:
+        return
+    require(len(t['acceptance_criteria'])==len(set(t['acceptance_criteria'])), 'acceptance IDs must be unique')
+    require(all(isinstance(ac,str) and ac.strip() for ac in t['acceptance_criteria']), 'empty acceptance ID')
+    require(all(isinstance(rid,str) and rid.strip() for rid in ids), 'empty requirement ID')
+    require(all(r['acceptance_ids'] for r in t['requirements']), 'requirement has no acceptance criteria')
+    b=t.get('requirements_baseline',{})
+    require(b.get('status')=='confirmed' and b.get('version'), 'confirmed requirements baseline required')
+    check_artifact(root,b.get('document'))
+    require(b.get('requirements')==t['requirements'] and b.get('acceptance_ids')==t['acceptance_criteria'], 'requirements baseline scope changed')
+    c=b.get('confirmation',{})
+    require(c.get('actor') and c.get('timestamp'), 'requirements baseline confirmation source required')
+    check_artifact(root,c.get('source'))
+    require(c.get('document_sha256')==b['document']['sha256'], 'stale requirements confirmation')
+    require(c.get('baseline_sha256')==requirements_digest(t), 'stale requirements confirmation scope/version')
+    for q in t.get('open_questions',[]):
+        require(q.get('question_id') and q.get('description') and q.get('owner'), 'requirement question metadata missing')
+        require(q.get('status') in ('open','resolved','deferred') and isinstance(q.get('blocking'),bool), 'invalid requirement question status')
+        scope=q.get('requirement_ids')
+        require(isinstance(scope,list), 'requirement question scope missing')
+        affected=not scope or bool(set(scope)&set(ids))
+        require(not (q['status']!='resolved' and q['blocking'] and affected), 'unresolved requirement question: '+q['question_id'])
+
+def planning_gate(t,root,legacy_archived=False):
+    requirements_gate(t,root,legacy_archived)
     for key in ('design','plan'):
         check_artifact(root,t[key])
     f = t['feasibility']
@@ -126,18 +160,21 @@ def implementation_gate(t,root,expected=None):
     require(set(t['acceptance_criteria'])<=covered,'TDD coverage incomplete')
 
 
-def review_gate(t,root,expected=None):
+def review_gate(t,root,expected=None,legacy_archived=False):
     implementation_gate(t,root,expected)
     current = expected or snapshot(root)
     for dim in ('standards','spec'):
         reviews = [r for r in t['reviews'] if r.get('dimension')==dim]
         require(reviews, 'independent '+dim+' review missing')
         r = reviews[-1]
+        if not legacy_archived:
+            require(r.get('kind')=='code_review', 'formal code review required; prechecks are advisory')
+            require(r.get('requirements_sha256')==requirements_digest(t), 'review requirements version mismatch')
         require(r.get('role')=='reviewer' and r.get('session') and r['session'] not in t['implementation_sessions'], 'self review prohibited')
         require(r.get('verdict')=='pass' and r.get('snapshot')==current, 'review rejected or stale')
         check_artifact(root,r.get('report'))
 
-def test_gate(t,root,expected=None):
+def test_gate(t,root,expected=None,legacy_archived=False):
     current = expected or snapshot(root)
     covered = set()
     for e in t['tests']:
@@ -147,6 +184,9 @@ def test_gate(t,root,expected=None):
         require(receipt=={k:v for k,v in e.items() if k!='receipt'}, 'test fields differ from command receipt')
         check_artifact(root,e.get('output'))
         require(e.get('snapshot')==current, 'test evidence code version mismatch')
+        if not legacy_archived:
+            require(e.get('kind')=='qa_execution', 'formal QA execution required; document checks do not count')
+            require(e.get('requirements_sha256')==requirements_digest(t), 'QA requirements version mismatch')
         require(e.get('exit_code')==0 and not e.get('timed_out'), 'failed test blocks completion')
         require(e.get('command') and e.get('role')=='tester' and e.get('session') and e['session'] not in t['implementation_sessions'], 'independent QA required')
         covered.update(e.get('acceptance_ids',[]))
@@ -156,12 +196,13 @@ def test_gate(t,root,expected=None):
 def delivery_gate(state,t,root,archived=False):
     expected=t.get("completed_snapshot") if archived else snapshot(root)
     require(expected,"completed snapshot missing")
-    planning_gate(t,root)
-    authorize(t,root)
+    legacy_archived=archived and 'requirements_baseline' not in t
+    planning_gate(t,root,legacy_archived)
+    authorize(t,root,legacy_archived)
     require(archived or state['capabilities'].get('independent_sessions') is True, 'independent reviewer/tester execution unavailable')
     require(t['implementation_sessions'], 'implementation identity missing')
-    review_gate(t,root,expected)
-    test_gate(t,root,expected)
+    review_gate(t,root,expected,legacy_archived)
+    test_gate(t,root,expected,legacy_archived)
     require(not any(b.get('status')!='closed' for b in t['bugs']), 'unresolved defects')
     if not archived:
         require(not git(root,'diff','--name-only','--diff-filter=U').strip(), 'unresolved Git merge conflict')
@@ -194,7 +235,8 @@ def validate(state,root,delivery=False):
         visiting.remove(tid)
         seen.add(tid)
     for t in state['tasks']:
-        require(set(new_task('',''))<=set(t), 'task schema fields missing')
+        optional={'requirements_baseline','open_questions','prechecks','agent_dispatches'}
+        require(set(new_task('',''))-optional<=set(t), 'task schema fields missing')
         require(t['status'] in STATUSES and t['stage'] in STAGES, 'invalid lifecycle/stage')
         require(t['risk_level'] in (1,2,3,4),'invalid risk')
         if t['status']=='RUNNING':
@@ -211,7 +253,9 @@ def validate(state,root,delivery=False):
             require(h.get('actor') and h.get('time') and h.get('reason'),'incomplete history')
             previous=tuple(h['to'])
         require(previous==(t['status'],t['stage']), 'state changed outside transition history')
-        if t['status'] not in ('BLOCKED','FAILED','CANCELLED','WAITING_APPROVAL') and t['stage'] in ('IMPLEMENTATION','INTEGRATION','CODE_REVIEW','QA','FIX','DELIVERY'):
+        if t['status'] not in ('BLOCKED','FAILED','CANCELLED','WAITING_APPROVAL','COMPLETED') and t['stage'] not in ('INTAKE','REQUIREMENTS'):
+            requirements_gate(t,root)
+        if t['status'] not in ('BLOCKED','FAILED','CANCELLED','WAITING_APPROVAL','COMPLETED') and t['stage'] in ('IMPLEMENTATION','INTEGRATION','CODE_REVIEW','QA','FIX','DELIVERY'):
             planning_gate(t,root)
             authorize(t,root)
         if t['status']=='COMPLETED' or delivery:
@@ -233,14 +277,14 @@ def legal_edge(oldstatus,oldstage,status,stage):
     if status in ('BLOCKED','FAILED','CANCELLED','WAITING_APPROVAL'):
         return stage==oldstage
     if oldstatus in ('BLOCKED','FAILED','WAITING_APPROVAL'):
-        return status=='READY' and stage==oldstage
+        return status=='READY' and (stage==oldstage or (stage=='REQUIREMENTS' and oldstage not in ('INTAKE','REQUIREMENTS')))
     if stage==oldstage:
         return (oldstatus,status) in {('PENDING','READY'),('READY','RUNNING'),('RUNNING','READY')} or (status=='COMPLETED' and oldstage=='DELIVERY' and oldstatus=='RUNNING')
     if status!='RUNNING' or oldstatus!='RUNNING':
         return False
     forward = dict(zip(STAGES[:9],STAGES[1:10]))
     forward.update({'QA':'DELIVERY','FIX':'CODE_REVIEW'})
-    return forward.get(oldstage)==stage or (oldstage in ('CODE_REVIEW','QA','INTEGRATION') and stage=='FIX') or (oldstage in ('FEASIBILITY','PLANNING','INTEGRATION','CODE_REVIEW','QA','FIX') and stage in ('DESIGN','REQUIREMENTS'))
+    return forward.get(oldstage)==stage or (oldstage in ('CODE_REVIEW','QA','INTEGRATION') and stage=='FIX') or (oldstage in ('DESIGN','FEASIBILITY','PLANNING','APPROVAL','INTEGRATION','CODE_REVIEW','QA','FIX') and stage in ('DESIGN','REQUIREMENTS'))
 
 def transition(state,task_id,status,stage,actor,root,now=None):
     now=time.time() if now is None else now
@@ -253,6 +297,8 @@ def transition(state,task_id,status,stage,actor,root,now=None):
     if status=='READY':
         require(t['attempts']<state['policy']['max_attempts'],'attempt limit reached; human takeover required')
         require(time.time()>=t['next_retry_at'],'retry backoff not elapsed')
+    if status not in ('BLOCKED','FAILED','CANCELLED','WAITING_APPROVAL') and stage not in ('INTAKE','REQUIREMENTS'):
+        requirements_gate(t,root)
     if status not in ('BLOCKED','FAILED','CANCELLED','WAITING_APPROVAL') and stage in ('IMPLEMENTATION','INTEGRATION','CODE_REVIEW','QA','FIX','DELIVERY'):
         planning_gate(t,root)
         authorize(t,root)
@@ -388,8 +434,11 @@ def operation(state,task_id,key,idempotent=False):
     t['operations'][key]={'status':'started','idempotent':idempotent,'time':time.time()}
     return True
 
-def run_evidence(root,command,role,session,acceptance_ids,timeout=30):
+def run_evidence(root,command,role,session,acceptance_ids,timeout=30,kind='command',requirements_sha256=None):
     require(command and session,'command/session required')
+    require(kind in ('command','qa_execution'), 'invalid command evidence kind')
+    if kind=='qa_execution':
+        require(role=='tester' and requirements_sha256, 'QA requires tester and requirements digest')
     before=snapshot(root)
     started=time.time()
     timed_out=False
@@ -404,7 +453,7 @@ def run_evidence(root,command,role,session,acceptance_ids,timeout=30):
     name=str(uuid.uuid4())
     out=folder/(name+'.log')
     out.write_bytes(output)
-    record={'command':command,'role':role,'session':session,'acceptance_ids':acceptance_ids,'snapshot':before,'started_at':started,'finished_at':time.time(),'exit_code':code,'timed_out':timed_out,'output':artifact(root,str(out.relative_to(root)))}
+    record={'kind':kind,'requirements_sha256':requirements_sha256,'command':command,'role':role,'session':session,'acceptance_ids':acceptance_ids,'snapshot':before,'started_at':started,'finished_at':time.time(),'exit_code':code,'timed_out':timed_out,'output':artifact(root,str(out.relative_to(root)))}
     receipt=folder/(name+'.json')
     receipt.write_text(json.dumps(record,ensure_ascii=False,indent=2))
     record['receipt']=artifact(root,str(receipt.relative_to(root)))
@@ -453,13 +502,14 @@ def main():
     tr=sub.add_parser('transition'); tr.add_argument('task'); tr.add_argument('status'); tr.add_argument('stage'); tr.add_argument('--actor',default='orchestrator')
     cl=sub.add_parser('claim'); cl.add_argument('task'); cl.add_argument('session'); cl.add_argument('workspace')
     ev=sub.add_parser('run-evidence'); ev.add_argument('--role',required=True); ev.add_argument('--session',required=True); ev.add_argument('--acceptance',action='append',default=[]); ev.add_argument('command',nargs=argparse.REMAINDER)
+    ev.add_argument('--kind',choices=['command','qa_execution'],default='command'); ev.add_argument('--requirements-sha256')
     args=p.parse_args()
     root=(args.root or args.file.resolve().parents[1]).resolve()
     store=Store(args.file)
     try:
         if args.action=='validate': validate(store.load(),root)
         elif args.action=='ready': print(json.dumps(ready(store.load(),root)))
-        elif args.action=='run-evidence': print(json.dumps(run_evidence(root,args.command,args.role,args.session,args.acceptance),ensure_ascii=False))
+        elif args.action=='run-evidence': print(json.dumps(run_evidence(root,args.command,args.role,args.session,args.acceptance,kind=args.kind,requirements_sha256=args.requirements_sha256),ensure_ascii=False))
         elif args.action=='recover': store.update(lambda s:recover(s),root)
         elif args.action=='claim': store.update(lambda s:claim(s,args.task,args.session,args.workspace,root),root)
         else: store.update(lambda s:transition(s,args.task,args.status,args.stage,args.actor,root),root)

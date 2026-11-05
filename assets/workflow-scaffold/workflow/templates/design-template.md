@@ -3,6 +3,7 @@
 作者角色/真实 session：
 基准 Git SHA / dirty 范围：
 REQ/AC IDs：
+已确认 requirements_baseline 版本/PRD/hash/来源：
 当前文档 SHA-256（外部记录，避免自引用）：
 
 ## 现状、目标、非目标

@@ -16,6 +16,8 @@
 
 ## 工作步骤
 
+基线前可以 design_precheck 在 REQUIREMENTS 内比较候选、取舍及关键风险，帮助用户决定；输出建议及待决，不将建议写成用户确认。重大业务选择未定时默认暂停依赖它的详细模型/API/计划扩写；用户明确要求完整候选草案时分别标注。正式 DESIGN 接收版本化 requirements_baseline，后续计划与授权绑定该基线。
+
 读取可用 brainstorming/writing-plans 技能并按用户授权执行；提出候选方案与取舍；定义公共 seams；七项 Feasibility 实测；按依赖/资源拆任务；明确测试、风险及回滚。
 
 ## 完成条件

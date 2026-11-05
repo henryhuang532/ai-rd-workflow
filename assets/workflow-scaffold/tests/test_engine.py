@@ -40,21 +40,34 @@ class EngineScenarios(unittest.TestCase):
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.root), *args], stderr=subprocess.STDOUT, text=True).strip()
 
+    def prepare_requirements(self):
+        """Real artifacts, SIMULATED confirmation; never a human authorization."""
+        (self.root / 'workflow').mkdir(exist_ok=True)
+        (self.root / 'workflow/prd.md').write_text('SIMULATION: REQ-001, AC-REQ-001-01, fixed behavior')
+        (self.root / 'workflow/confirmation.md').write_text('SIMULATION: fixture confirms only this PRD')
+        self.task['requirements'] = [{'requirement_id': 'REQ-001', 'acceptance_ids': ['AC-REQ-001-01']}]
+        self.task['requirement_ids'] = ['REQ-001']
+        self.task['acceptance_criteria'] = ['AC-REQ-001-01']
+        document = self.e.artifact(self.root, 'workflow/prd.md')
+        self.task['requirements_baseline'] = dict(status='confirmed', version='v1', document=document,
+            requirements=copy.deepcopy(self.task['requirements']), acceptance_ids=['AC-REQ-001-01'],
+            confirmation=dict(actor='SIMULATED user', timestamp='2026-11-04T00:00:00Z',
+                source=self.e.artifact(self.root, 'workflow/confirmation.md'), document_sha256=document['sha256']))
+        self.task['requirements_baseline']['confirmation']['baseline_sha256'] = self.e.requirements_digest(self.task)
+
     def prepare_plan(self):
         """SIMULATED specialist records; real files/hashes, no real human approval."""
-        (self.root / 'workflow').mkdir(exist_ok=True)
+        self.prepare_requirements()
         for name in ('design', 'plan', 'approval', 'feasibility', 'review', 'integration', 'delivery'):
             (self.root / 'workflow' / (name + '.md')).write_text('SIMULATION: ' + name)
         for name in ('design', 'plan'):
             self.task[name] = self.e.artifact(self.root, 'workflow/' + name + '.md')
-        self.task['requirements'] = [{'requirement_id': 'REQ-001', 'acceptance_ids': ['AC-REQ-001-01']}]
-        self.task['requirement_ids'] = ['REQ-001']
-        self.task['acceptance_criteria'] = ['AC-REQ-001-01']
         self.task['feasibility'] = {'checks': {k: True for k in self.e.CHECKS},
                                     'evidence': [self.e.artifact(self.root, 'workflow/feasibility.md')]}
         self.task['authorization'] = {
             'decision': 'approved', 'kind': 'preauthorized', 'risk_level': self.task['risk_level'],
             'scope': ['TASK-001'], 'source': self.e.artifact(self.root, 'workflow/approval.md'),
+            'requirements_sha256': self.e.requirements_digest(self.task),
             'design_sha256': self.task['design']['sha256'], 'plan_sha256': self.task['plan']['sha256']}
         self.state['capabilities']['independent_sessions'] = True
 
@@ -70,7 +83,8 @@ class EngineScenarios(unittest.TestCase):
                                 failure_reason='SIMULATION: code.txt must contain fixed instead of base')]
         for stage in ['REQUIREMENTS', 'DESIGN', 'FEASIBILITY', 'PLANNING', 'APPROVAL', 'IMPLEMENTATION', 'INTEGRATION', 'CODE_REVIEW']:
             self.e.transition(self.state, 'TASK-001', 'RUNNING', stage, 'orchestrator', self.root)
-        self.task['reviews'] = [dict(dimension=dim, role='reviewer', session='session-reviewer',
+        self.task['reviews'] = [dict(kind='code_review', dimension=dim, role='reviewer', session='session-reviewer',
+                                     requirements_sha256=self.e.requirements_digest(self.task),
                                      verdict='pass', snapshot=self.e.snapshot(self.root),
                                      report=self.e.artifact(self.root, 'workflow/review.md'))
                                 for dim in ('standards', 'spec')]
@@ -78,7 +92,8 @@ class EngineScenarios(unittest.TestCase):
     def finish(self):
         self.e.transition(self.state, 'TASK-001', 'RUNNING', 'QA', 'orchestrator', self.root)
         self.task['tests'] = [self.e.run_evidence(self.root, [sys.executable, '-c', 'print("independent fixture QA")'],
-                                                  'tester', 'session-tester', ['AC-REQ-001-01'])]
+                                                  'tester', 'session-tester', ['AC-REQ-001-01'], kind='qa_execution',
+                                                  requirements_sha256=self.e.requirements_digest(self.task))]
         integration_command = self.e.run_evidence(self.root, [sys.executable, '-c', 'print("integration fixture")'],
                                                    'integration', 'session-integration', ['AC-REQ-001-01'])
         self.task['integration'] = dict(command_evidence=integration_command, snapshot=self.e.snapshot(self.root), passed=True,
@@ -107,11 +122,63 @@ class EngineScenarios(unittest.TestCase):
         with self.assertRaisesRegex(self.e.WorkflowError, 'stale design approval'):
             self.e.authorize(self.task, self.root)
 
+    def test_new_requirements_baseline_invalidates_old_implementation_approval(self):
+        self.prepare_plan()
+        (self.root / 'workflow/prd.md').write_text('SIMULATION: changed permission rule')
+        b = self.task['requirements_baseline']
+        b['document'] = self.e.artifact(self.root, 'workflow/prd.md')
+        b['confirmation']['document_sha256'] = b['document']['sha256']
+        b['confirmation']['baseline_sha256'] = self.e.requirements_digest(self.task)
+        with self.assertRaisesRegex(self.e.WorkflowError, 'stale requirements approval'):
+            self.e.authorize(self.task, self.root)
+
+    def test_scope_change_with_identical_prd_invalidates_confirmation(self):
+        self.prepare_plan()
+        self.task['requirement_ids'] = ['REQ-NEW']
+        self.task['requirements'][0]['requirement_id'] = 'REQ-NEW'
+        self.task['requirements_baseline']['version'] = 'v2'
+        self.task['requirements_baseline']['requirements'] = copy.deepcopy(self.task['requirements'])
+        with self.assertRaisesRegex(self.e.WorkflowError, 'stale requirements confirmation'):
+            self.e.authorize(self.task, self.root)
+
+    def test_new_scope_confirmation_does_not_reuse_old_authorization_review_or_qa(self):
+        self.advance_to_review()
+        self.task['tests'] = [self.e.run_evidence(self.root,
+            [sys.executable, '-c', "print('SIMULATED acceptance')"], 'tester', 'session-tester',
+            ['AC-REQ-001-01'], kind='qa_execution', requirements_sha256=self.e.requirements_digest(self.task))]
+        self.task['requirement_ids'] = ['REQ-NEW']
+        self.task['requirements'][0]['requirement_id'] = 'REQ-NEW'
+        b = self.task['requirements_baseline']
+        b['version'] = 'v2'
+        b['requirements'] = copy.deepcopy(self.task['requirements'])
+        b['confirmation']['baseline_sha256'] = self.e.requirements_digest(self.task)
+        self.e.requirements_gate(self.task, self.root)
+        for gate, message in ((self.e.authorize, 'stale requirements approval'),
+                (self.e.review_gate, 'review requirements version mismatch'),
+                (self.e.test_gate, 'QA requirements version mismatch')):
+            with self.subTest(gate=gate.__name__), self.assertRaisesRegex(self.e.WorkflowError, message):
+                gate(self.task, self.root)
+
     def test_07_reviewer_rejects_code(self):
         self.advance_to_review()
         self.task['reviews'][-1]['verdict'] = 'reject'
         with self.assertRaises(self.e.WorkflowError):
             self.e.transition(self.state, 'TASK-001', 'RUNNING', 'QA', 'orchestrator', self.root)
+
+    def test_requirements_precheck_cannot_satisfy_code_review(self):
+        self.advance_to_review()
+        for review in self.task['reviews']:
+            review['kind'] = 'requirements_precheck'
+        with self.assertRaisesRegex(self.e.WorkflowError, 'formal code review required'):
+            self.e.transition(self.state, 'TASK-001', 'RUNNING', 'QA', 'orchestrator', self.root)
+
+    def test_tester_document_check_cannot_satisfy_qa(self):
+        self.prepare_requirements()
+        self.task['tests'] = [self.e.run_evidence(self.root,
+            [sys.executable, '-c', "print('document check, no business test')"],
+            'tester', 'session-tester', ['AC-REQ-001-01'])]
+        with self.assertRaisesRegex(self.e.WorkflowError, 'formal QA execution required'):
+            self.e.test_gate(self.task, self.root)
 
     def test_07_matt_cannot_review_own_code(self):
         self.advance_to_review()
@@ -158,6 +225,162 @@ class EngineScenarios(unittest.TestCase):
         self.e.validate(self.state, self.root)
         self.assertEqual(self.task['status'], 'PENDING')
         self.assertEqual(self.task['stage'], 'INTAKE')
+
+    def test_empty_requirements_cannot_enter_design(self):
+        self.e.claim(self.state, 'TASK-001', 'session-product', self.root, self.root)
+        self.e.transition(self.state, 'TASK-001', 'RUNNING', 'REQUIREMENTS', 'product', self.root)
+        with self.assertRaisesRegex(self.e.WorkflowError, 'requirements/acceptance missing'):
+            self.e.transition(self.state, 'TASK-001', 'RUNNING', 'DESIGN', 'architect', self.root)
+        self.assertEqual(self.task['stage'], 'REQUIREMENTS')
+
+    def test_unconfirmed_requirements_cannot_enter_design(self):
+        self.prepare_requirements()
+        self.task['requirements_baseline'] = {}
+        self.e.claim(self.state, 'TASK-001', 'session-product', self.root, self.root)
+        self.e.transition(self.state, 'TASK-001', 'RUNNING', 'REQUIREMENTS', 'product', self.root)
+        with self.assertRaisesRegex(self.e.WorkflowError, 'requirements baseline'):
+            self.e.transition(self.state, 'TASK-001', 'RUNNING', 'DESIGN', 'architect', self.root)
+
+    def test_unresolved_business_rule_blocks_only_its_scope(self):
+        self.prepare_requirements()
+        self.task['open_questions'] = [dict(question_id='DEC-001', description='Admin data access?',
+            owner='Product/user', status='open', blocking=True, requirement_ids=['REQ-001'])]
+        self.e.claim(self.state, 'TASK-001', 'session-product', self.root, self.root)
+        self.e.transition(self.state, 'TASK-001', 'RUNNING', 'REQUIREMENTS', 'product', self.root)
+        with self.assertRaisesRegex(self.e.WorkflowError, 'unresolved requirement question'):
+            self.e.transition(self.state, 'TASK-001', 'RUNNING', 'DESIGN', 'architect', self.root)
+        self.e.transition(self.state, 'TASK-001', 'BLOCKED', 'REQUIREMENTS', 'orchestrator', self.root)
+        self.state['tasks'].append(self.e.new_task('TASK-002', 'Independent work'))
+        self.assertEqual(self.e.ready(self.state, self.root), ['TASK-002'])
+
+    def test_duplicate_acceptance_ids_cannot_form_a_baseline(self):
+        self.prepare_requirements()
+        self.task['acceptance_criteria'].append('AC-REQ-001-01')
+        self.task['requirements_baseline']['acceptance_ids'] = list(self.task['acceptance_criteria'])
+        self.e.claim(self.state, 'TASK-001', 'session-product', self.root, self.root)
+        self.e.transition(self.state, 'TASK-001', 'RUNNING', 'REQUIREMENTS', 'product', self.root)
+        with self.assertRaisesRegex(self.e.WorkflowError, 'acceptance IDs must be unique'):
+            self.e.transition(self.state, 'TASK-001', 'RUNNING', 'DESIGN', 'architect', self.root)
+
+    def test_confirmed_scope_can_enter_design_with_unrelated_pending_question(self):
+        self.prepare_requirements()
+        self.task['open_questions'] = [dict(question_id='DEC-OTHER', description='Another feature?',
+            owner='Product/user', status='open', blocking=True, requirement_ids=['REQ-OTHER'])]
+        self.e.claim(self.state, 'TASK-001', 'session-product', self.root, self.root)
+        self.e.transition(self.state, 'TASK-001', 'RUNNING', 'REQUIREMENTS', 'product', self.root)
+        self.e.transition(self.state, 'TASK-001', 'RUNNING', 'DESIGN', 'architect', self.root)
+        self.e.validate(self.state, self.root)
+        self.assertEqual(self.task['stage'], 'DESIGN')
+
+    def test_rehashing_prd_does_not_reuse_old_confirmation(self):
+        self.prepare_requirements()
+        (self.root / 'workflow/prd.md').write_text('SIMULATION: changed business rule')
+        self.task['requirements_baseline']['document'] = self.e.artifact(self.root, 'workflow/prd.md')
+        self.e.claim(self.state, 'TASK-001', 'session-product', self.root, self.root)
+        self.e.transition(self.state, 'TASK-001', 'RUNNING', 'REQUIREMENTS', 'product', self.root)
+        with self.assertRaisesRegex(self.e.WorkflowError, 'stale requirements confirmation'):
+            self.e.transition(self.state, 'TASK-001', 'RUNNING', 'DESIGN', 'architect', self.root)
+
+    def test_requirement_mapping_change_requires_new_baseline(self):
+        self.prepare_requirements()
+        self.task['requirements'][0]['acceptance_ids'].append('AC-REQ-001-02')
+        self.task['acceptance_criteria'].append('AC-REQ-001-02')
+        self.e.claim(self.state, 'TASK-001', 'session-product', self.root, self.root)
+        self.e.transition(self.state, 'TASK-001', 'RUNNING', 'REQUIREMENTS', 'product', self.root)
+        with self.assertRaisesRegex(self.e.WorkflowError, 'baseline scope changed'):
+            self.e.transition(self.state, 'TASK-001', 'RUNNING', 'DESIGN', 'architect', self.root)
+
+    def test_deferred_global_blocker_still_blocks_design(self):
+        self.prepare_requirements()
+        self.task['open_questions'] = [dict(question_id='DEC-001', description='Account scope?',
+            owner='Product/user', status='deferred', blocking=True, requirement_ids=[])]
+        self.e.claim(self.state, 'TASK-001', 'session-product', self.root, self.root)
+        self.e.transition(self.state, 'TASK-001', 'RUNNING', 'REQUIREMENTS', 'product', self.root)
+        with self.assertRaisesRegex(self.e.WorkflowError, 'unresolved requirement question'):
+            self.e.transition(self.state, 'TASK-001', 'RUNNING', 'DESIGN', 'architect', self.root)
+
+    def test_store_rejects_stale_baseline_and_keeps_checkpoint(self):
+        import yaml
+        self.prepare_requirements()
+        self.e.claim(self.state, 'TASK-001', 'session-product', self.root, self.root)
+        for stage in ('REQUIREMENTS', 'DESIGN'):
+            self.e.transition(self.state, 'TASK-001', 'RUNNING', stage, 'orchestrator', self.root)
+        path = self.root / 'workflow/current-task.yaml'
+        path.write_text(yaml.safe_dump(self.state))
+        before = path.read_bytes()
+        (self.root / 'workflow/prd.md').write_text('SIMULATION: changed since confirmation')
+        with self.assertRaisesRegex(self.e.WorkflowError, 'stale artifact digest'):
+            self.e.Store(path).update(lambda state: None, self.root)
+        self.assertEqual(path.read_bytes(), before)
+        self.e.Store(path).update(lambda state: self.e.transition(state, 'TASK-001',
+            'BLOCKED', 'DESIGN', 'orchestrator', self.root), self.root)
+        self.assertEqual(self.e.Store(path).load()['tasks'][0]['status'], 'BLOCKED')
+
+    def test_changed_design_requirements_can_return_to_product_without_reapproving_old_baseline(self):
+        self.prepare_requirements()
+        self.e.claim(self.state, 'TASK-001', 'session-product', self.root, self.root)
+        for stage in ('REQUIREMENTS', 'DESIGN'):
+            self.e.transition(self.state, 'TASK-001', 'RUNNING', stage, 'orchestrator', self.root)
+        (self.root / 'workflow/prd.md').write_text('SIMULATION: scope changed, awaiting user')
+        self.e.transition(self.state, 'TASK-001', 'BLOCKED', 'DESIGN', 'orchestrator', self.root)
+        try:
+            self.e.transition(self.state, 'TASK-001', 'READY', 'REQUIREMENTS', 'product', self.root)
+        except self.e.WorkflowError as exc:
+            self.fail('Cannot return stale requirements to Product: '+str(exc))
+        self.e.validate(self.state, self.root)
+        self.assertEqual(self.task['stage'], 'REQUIREMENTS')
+        self.assertEqual(self.task['requirements_baseline']['status'], 'confirmed')
+        with self.assertRaisesRegex(self.e.WorkflowError, 'stale artifact digest'):
+            self.e.requirements_gate(self.task, self.root)
+
+    def test_confirmed_requirements_do_not_grant_implementation_authorization(self):
+        self.prepare_plan()
+        self.task['authorization'] = {}
+        self.e.claim(self.state, 'TASK-001', 'session-product', self.root, self.root)
+        for stage in ('REQUIREMENTS', 'DESIGN', 'FEASIBILITY', 'PLANNING', 'APPROVAL'):
+            self.e.transition(self.state, 'TASK-001', 'RUNNING', stage, 'orchestrator', self.root)
+        with self.assertRaisesRegex(self.e.WorkflowError, 'approval required'):
+            self.e.transition(self.state, 'TASK-001', 'RUNNING', 'IMPLEMENTATION', 'matt', self.root)
+
+    def test_new_baseline_invalidates_review_and_qa_with_unchanged_code(self):
+        self.advance_to_review()
+        b = self.task['requirements_baseline']
+        self.task['tests'] = [self.e.run_evidence(self.root,
+            [sys.executable, '-c', "print('SIMULATION: acceptance test')"], 'tester',
+            'session-tester', ['AC-REQ-001-01'], kind='qa_execution', requirements_sha256=self.e.requirements_digest(self.task))]
+        before = self.e.snapshot(self.root)
+        (self.root / 'workflow/prd.md').write_text('SIMULATION: changed after Review and QA')
+        b['document'] = self.e.artifact(self.root, 'workflow/prd.md')
+        b['confirmation']['document_sha256'] = b['document']['sha256']
+        self.assertEqual(self.e.snapshot(self.root), before)
+        with self.assertRaisesRegex(self.e.WorkflowError, 'review requirements version mismatch'):
+            self.e.review_gate(self.task, self.root)
+        with self.assertRaisesRegex(self.e.WorkflowError, 'QA requirements version mismatch'):
+            self.e.test_gate(self.task, self.root)
+
+    def test_document_receipt_cannot_be_relabelled_as_qa(self):
+        self.prepare_requirements()
+        evidence = self.e.run_evidence(self.root, [sys.executable, '-c', "print('document check')"],
+            'tester', 'session-tester', ['AC-REQ-001-01'])
+        evidence.update(kind='qa_execution', requirements_sha256=self.e.requirements_digest(self.task))
+        self.task['tests'] = [evidence]
+        with self.assertRaisesRegex(self.e.WorkflowError, 'differ from command receipt'):
+            self.e.test_gate(self.task, self.root)
+
+    def test_cli_captures_explicit_qa_kind_and_baseline_in_receipt(self):
+        import json
+        self.prepare_requirements()
+        digest = self.e.requirements_digest(self.task)
+        result = subprocess.run([sys.executable, str(ENGINE), '--root', str(self.root), 'run-evidence',
+            '--role', 'tester', '--session', 'session-tester', '--kind', 'qa_execution',
+            '--requirements-sha256', digest, '--acceptance', 'AC-REQ-001-01',
+            sys.executable, '-c', "print('SIMULATION: acceptance test')"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        evidence = json.loads(result.stdout)
+        self.assertEqual(evidence['kind'], 'qa_execution')
+        self.assertEqual(evidence['requirements_sha256'], digest)
+        self.task['tests'] = [evidence]
+        self.e.test_gate(self.task, self.root)
 
     def test_03_complex_dag_dependency_completion_controls_readiness(self):
         b = self.e.new_task('TASK-002', 'dependent', risk=3)
@@ -349,6 +572,34 @@ class EngineScenarios(unittest.TestCase):
         self.assertEqual(self.task['completed_snapshot'], old_snapshot)
         with self.assertRaises(self.e.WorkflowError):
             self.e.validate(self.state, self.root, delivery=True)
+
+    def test_legacy_completed_archive_does_not_block_new_queue(self):
+        self.advance_to_review()
+        self.finish()
+        for key in ('requirements_baseline', 'open_questions', 'prechecks', 'agent_dispatches'):
+            self.task.pop(key, None)
+        for review in self.task['reviews']:
+            review.pop('kind')
+            review.pop('requirements_sha256')
+        self.task['authorization'].pop('requirements_sha256')
+        self.state['tasks'].append(self.e.new_task('TASK-002', 'new task'))
+        try:
+            self.assertEqual(self.e.ready(self.state, self.root), ['TASK-002'])
+        except self.e.WorkflowError as exc:
+            self.fail('Legacy completed archive blocks unrelated new work: '+str(exc))
+        with self.assertRaises(self.e.WorkflowError):
+            self.e.delivery_gate(self.state, self.task, self.root)
+
+    def test_legacy_archive_keeps_original_acceptance_rules(self):
+        self.advance_to_review()
+        self.finish()
+        self.task.pop('requirements_baseline')
+        self.task['acceptance_criteria'].append('AC-REQ-001-01')
+        self.state['tasks'].append(self.e.new_task('TASK-002', 'new task'))
+        try:
+            self.assertEqual(self.e.ready(self.state, self.root), ['TASK-002'])
+        except self.e.WorkflowError as exc:
+            self.fail('New acceptance rules changed an old archive: '+str(exc))
 
     def test_real_store_recovers_expired_lease_with_missing_design(self):
         import yaml

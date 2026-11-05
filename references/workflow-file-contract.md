@@ -8,6 +8,8 @@
 
 每任务至少有 task_id、parent_task_id、requirement_ids、title、description、risk_level、status、stage、dependencies、assigned_role、assigned_agent、workspace、branch、acceptance_criteria、artifacts、attempts、timestamps、evidence；另存 requirements、design、plan、authorization、reviews、tests、bugs、lease、operations、history。ID 唯一，依赖存在且无环；父任务只是归组，前置关系必须显式写 dependencies，避免父子依赖死锁。
 
+新增任务另初始化 requirements_baseline、open_questions、prechecks、agent_dispatches。旧 v2 活跃任务缺少这些字段时可读取和保存 INTAKE/REQUIREMENTS/阻塞检查点，但必须补齐有效基线才可继续 DESIGN 及后续阶段；不得推导为已确认。历史 COMPLETED 且没有 requirements_baseline 字段的任务，仅在归档模式按原证据规则验证，不生成新基线或新交付批准；重新交付必须满足新门禁。详见迁移指南。
+
 生命周期：PENDING、READY、RUNNING、WAITING_APPROVAL、BLOCKED、FAILED、COMPLETED、CANCELLED。REVIEWING/TESTING/FIXING 是旧输入别名，迁移为 RUNNING + CODE_REVIEW/QA/FIX；v2 不同时维护两套含义。阶段：INTAKE、REQUIREMENTS、DESIGN、FEASIBILITY、PLANNING、APPROVAL、IMPLEMENTATION、INTEGRATION、CODE_REVIEW、QA、FIX、DELIVERY。
 
 | 转移/阶段 | 进入/退出条件与产物 | 执行角色、审批和失败策略 |
@@ -15,7 +17,7 @@
 | PENDING→READY | 依赖完成、资源可用、需求/范围存在 | Orchestrator；失败保持等待，独立分支继续 |
 | READY→RUNNING | 领取原子租约，真实 session/workspace，重试预算 | 任务指定角色；超时恢复检查点，不盲目重放 |
 | INTAKE→REQUIREMENTS | 原始需求、风险理由、影响范围 | Product；重大歧义 BLOCKED |
-| REQUIREMENTS→DESIGN | 唯一 REQ/AC、可验证标准 | Architect/Superpowers；需求变化返回 Product |
+| REQUIREMENTS→DESIGN | 唯一且非空 REQ/AC、可验证标准、版本化需求基线及真实确认来源；本范围无未决阻塞规则 | Product 收敛，Architect/Superpowers 接收；候选预审保留 REQUIREMENTS，变化返回 Product |
 | DESIGN→FEASIBILITY | 设计版本/哈希、ADR、接口、测试和回滚 | Architect；重大假设隔离 Spike |
 | FEASIBILITY→PLANNING | 七项检查有命令/证据，未决假设已处理 | Architect；失败回 DESIGN |
 | PLANNING→APPROVAL | DAG、所有权、资源、验收/测试映射 | Architect/Orchestrator；缺失计划不得实施 |
@@ -30,6 +32,34 @@
 | 任意未完成→CANCELLED | 有权主体取消、保存已有产物和租约结果 | Orchestrator；取消不等于成功，不撤销外部效果 |
 
 风险越级时停止受影响写操作。设计/计划/验收变更需要重新计算哈希和影响；修改代码后旧 Review/QA 默认失效。低风险允许最小文档及快速连续转移，但每一必要门禁仍必须真实满足。
+
+## 需求预审、收敛与基线
+
+预审是 REQUIREMENTS 内按议题开展的活动，不增加主阶段。`prechecks[]` 使用 `kind: requirements_precheck | design_precheck`，记录真实 session、输入产物/哈希、REQ 范围、问题/风险/证据/建议和报告路径；输出是澄清输入，没有正式代码/验收 pass/fail。Reviewer 找规则冲突与风险，Tester 检查可测试性和候选场景，Architect 提供方案取舍。角色不能凭候选分析自行决定业务规则；规则选择不等于整份 PRD、设计或实施批准。
+
+Product 区分确认/事实/建议/假设/待决；`open_questions[]` 每项含 question_id、description、owner、status（open/resolved/deferred）、blocking（布尔）和 requirement_ids。空 requirement_ids 表示阻塞整个本任务；非空只阻塞与本任务 REQ 交集。范围内 blocking=true 且未 resolved 的问题阻止基线门禁，改成 deferred 不能绕过。标记非阻塞或排除范围需记录真实理由与决定来源；脚本不判断自然语言业务充分性。
+
+默认先汇总决策清单及关键场景，再等待重大业务决定；暂停依赖该决定的完整设计、接口和验收矩阵扩写，独立范围继续。用户要求完整候选草案时分别标注候选及条件式预期。未确认预期的用例为 draft/not_run，文档检查成功和预审完成不算验收通过。预审人员不可用时记录单会话分析及限制；无需为非必需预审阻塞无关工作，最终独立 Review/QA 仍必需。
+
+`requirements_baseline` 字段：status=confirmed、version、document={path,sha256}、requirements（当时 requirements 原记录快照）、acceptance_ids（当时 acceptance_criteria），以及 confirmation={actor,timestamp,source:{path,sha256},document_sha256,baseline_sha256}。先填写基线版本/文档/映射，再用 `requirements_digest(task)` 计算 baseline_sha256：其指纹同时包含 version、document、requirements、acceptance_ids，确认元数据不参与，避免自引用。来源必须是已有用户/有权主体真实确认，绑定本版 PRD 及交付范围；内容和范围仍有效的确认可复用，不强加重复确认。基线可按交付子范围建立。候选技术预审可在基线前支持决策；正式 DESIGN 和后续活跃阶段由 requirements_gate 检查 REQ/AC 唯一/非空/映射、基线、来源及范围内阻塞项。
+
+需求基线不是设计/实施授权。authorization、正式 reviews 及 QA receipt 另绑定 requirements_sha256（由 requirements_digest(task) 计算的完整基线指纹，包含版本/PRD/REQ/AC 范围），并保留原有设计/计划/代码版本约束。需求文档、REQ/AC 范围或业务预期变化时保存原版、复核影响并重建受影响基线/授权/证据；不能仅替换旧确认/报告中的哈希。小的格式修订也须先核实来源仍覆盖新版本，再记录影响与复用依据。哈希和字段仍不认证主体或证明语义正确。
+
+后续阶段发现基线失效时可先在原阶段 BLOCKED 保存检查点，再由 transition 返回 READY/REQUIREMENTS 重新领取澄清；该回退不验证已经失效的基线，也不自动更新确认/授权，不重置尝试预算。重新前进时完整重验。
+
+## 评审入口与写法
+
+每个任务和阶段只保留一个当前评审入口，默认是 `docs/reports/<task_id>-review.md`。后续复审更新同一文件；旧版本放入任务历史，命令回执和完整会话输出放入任务证据目录。不要为同一轮生成多份重复总结。
+
+评审正文先写结论，再逐项写问题。每个问题必须包含：问题、证据、影响、建议、完成条件和状态。问题应有文件/行号或其他可定位位置；没有影响和完成条件的意见不能作为阻塞项。正文使用普通中文，字段名、哈希、模型参数和命令细节只放元数据或证据链接。评审报告不复制整份 PRD、设计或测试报告；复审只补充新增或变化的问题。
+
+## 子 Agent 选择与成本记录
+
+只有存在具体独立问题/产物或独立质量门禁时才委派。格式、链接、ID 与结构化覆盖优先脚本；事实提取/定位、已确认规则同步、明确局部任务使用经验证可胜任的低成本模型；多步歧义、跨模块推理、权限/租户隔离/迁移关键判断使用更强模型。按子任务选 model/effort，角色不固定档位，不能从参数量推导能力、token 用量或价格。能力表来自当前真实工具，不维护固定型号或猜测可用性。
+
+授权允许且工具支持覆盖时显式选择 model/reasoning_effort；否则记录实际继承和限制。新上下文交接包含任务/REQ、目的/阶段、当前确认与授权、安全约束、相关输入路径/版本、具体问题、允许/禁止路径、完成条件及输出契约。工具支持时不继承无关历史；如覆盖参数与完整历史 fork 不兼容则使用 `fork_turns: none` 配合交接包。已有可恢复专业会话可复用，但先核对其输入版本，不为了换模型创建同义任务绕过重试限额。
+
+`agent_dispatches[]` 按 handoff 模板记录目的/风险、选择理由、请求与实际可观测 model/effort、上下文范围、输出预算、attempt、升级原因、用量和结果。用量不可观测时 tokens/cost 留 null，并记录原因；API 单价不能直接冒充订阅额度扣减。不因低价不断试错：证据不足、超出能力或风险升级时保留有效发现并升级，沿用同一任务和重试预算。仅对变化部分重审，稳定全文不重复生成。实际节省应按一次合格交付的主/子 Agent、协调、重试、复核总量衡量；模型更便宜不保证 token 更少。脚本不选择或启动模型，不声称本地结构校验已证明模型质量或节省比例。
 
 ## 技能依赖与安装
 
@@ -70,7 +100,7 @@ Architect 从模块接口、数据依赖和资源所有权推导 dependencies，
 
 追踪链：REQ→ADR/Design→Task→Git SHA/dirty snapshot→TC→Evidence。AC 必须唯一并映射至少一项独立验收测试。命令证据含 argv/工作目录、真实开始/结束时间、退出码、完整日志或路径+哈希、执行角色/真实 session、代码 SHA 和工作树快照。RED 证据绑定失败时版本并记录预期失败原因；GREEN/Review/QA/集成绑定最终交付版本。模板的空字段永远不是通过证据。
 
-Review 记录 base/head SHA、dirty/untracked 范围、Reviewer session、Standards 和 Specification 两轴、位置、severity、建议、blocking、结论及复审。Reviewer 与 Matt 必须独立，Tester 也不得由 Matt 自评充当。QA 保存用例、需求/AC、前置数据、步骤、预期/实际、命令/退出码/日志、正常/异常/边界/权限/回归适用性。
+正式 Review 使用 kind=code_review、requirements_sha256，另记录 base/head SHA、dirty/untracked 范围、Reviewer session、Standards 和 Specification 两轴、位置、severity、建议、blocking、结论及复审。Reviewer 与 Matt 必须独立，Tester 也不得由 Matt 自评充当。QA 保存用例、需求/AC、前置数据、步骤、预期/实际、命令/退出码/日志、正常/异常/边界/权限/回归适用性；其命令 receipt 必须含 kind=qa_execution 和 requirements_sha256。run_evidence 默认 kind=command，即使 role=tester 也不自动计入 QA；正式执行须显式传 kind 和基线哈希（CLI 对应 --kind qa_execution --requirements-sha256）。类型字段与哈希只约束记录一致性，不能将无关 exit 0 命令变成业务验收。
 
 当前交付代码或设计版本改变后默认失效关联门禁；历史设计/计划/审批/证据必须保存到任务独立的不可变归档路径，不能复用覆盖；已完成历史任务以 completed_snapshot 归档并核验原版本证据，不要求随之后续任务改代码而重新执行，避免阻塞整个队列；重新开启/修改原任务则重新验证。只可由独立角色记录可验证影响分析后复用不受影响证据，不能只改版本字段。P0/P1 未关闭阻止交付；P2 需明确处理和有权接受剩余风险，不删测试或弱化断言以消除失败。
 

@@ -18,6 +18,10 @@ attempts: 0
 timestamps: {}
 evidence: []
 requirements: []
+requirements_baseline: {}
+open_questions: []
+prechecks: []
+agent_dispatches: []
 design: {}
 plan: {}
 feasibility: {}

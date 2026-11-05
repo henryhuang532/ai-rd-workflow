@@ -1,6 +1,7 @@
 # <task_id> Plan / <version>
 
 作者/真实 session：
+输入 Requirements baseline 版本/path/SHA-256：
 输入 Design 版本/path/SHA-256：
 授权或待审批范围：
 可行性证据：

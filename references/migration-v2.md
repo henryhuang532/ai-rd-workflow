@@ -24,6 +24,14 @@
 
 ## 运行方式与限制
 
+### 需求基线与证据类型增量
+
+保留 schema_version=2 和现有主阶段；新任务增加 requirements_baseline、open_questions、prechecks、agent_dispatches，字段见统一契约。旧活跃任务不自动获得 confirmed 状态：在 REQUIREMENTS 补齐本范围 PRD/REQ/AC/确认来源，处理阻塞问题后经门禁进入 DESIGN；旧任务若停在后续阶段，先保存为原阶段 BLOCKED 和检查点，再经 transition 返回 READY/REQUIREMENTS，由 Product 重新领取与澄清，不能仅补哈希伪造确认。原有真实确认仍覆盖当前范围时可以复用。
+
+旧 COMPLETED 任务若原本没有 requirements_baseline 字段，保留原记录、归档版本及证据；归档校验沿用原门禁，不要求补造确认/类型，也不会因此批准当前新交付。新增/活跃任务及任何重新交付均强制新基线与类型绑定；不要给旧历史自动插入空基线。没有可信旧完成来源时仍须人工核实，归档兼容不是身份认证或防恶意重写。
+
+正式 reviews 增加 kind=code_review 和 requirements_sha256；authorization 增加 requirements_sha256。正式 QA 重新执行时向 run_evidence 传 kind='qa_execution'、requirements_sha256，CLI 对应 --kind qa_execution --requirements-sha256；默认 kind=command 不能满足 QA。不要改旧 receipt 或给预审改名充当正式证据。模型路由由当前 Agent/执行器实现，新增交接记录不代表脚本已经支持启动模型或测得节省。
+
 `python3 scripts/workflow_engine.py --help` 查看实际 CLI。没有 init 命令：复制空队列或使用 Python new_state。ready 返回可领取集合；claim 领取；transition 经过门禁；recover 回收过期租约；run-evidence 实际运行 argv 并保存日志/receipt。所有 API 写操作由 Store.update 包裹。集成 command_evidence 必须来自真实 role=integration 命令执行；历史完成任务的 completed_snapshot 保留原版本证据，后续任务代码变化不自动废弃历史交付。状态文件排他锁依赖本地 Unix 文件系统，不承诺分布式锁或跨主机存储语义。
 
 真实并行、独立会话身份、会话恢复和原始授权可信性由已有 Codex/执行环境提供；脚本不启动 Agent，不后台轮询或保证长期唤醒。没有独立 Reviewer/Tester 时可准备工作，但不能交付。高风险操作和外部非幂等动作需原有审批及幂等支持。哈希/receipt 可拒绝一般字段改写，不能防同权限恶意重写全部记录。测试场景的模拟与真实结果以实际验证报告为准，不能从本指南推导测试已通过。
